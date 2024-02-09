@@ -1,7 +1,6 @@
 // entrypoints/example-ui.content/index.tsx
 import ReactDOM from 'react-dom/client';
-import App from '../popup/App';
-import '../popup/style.css';
+import Link from './Link';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
@@ -13,11 +12,11 @@ export default defineContentScript({
     const ui = await createShadowRootUi(ctx, {
       name: 'example-ui',
       position: 'inline',
-      anchor: 'div.home-campaign-hero',
+      anchor: 'div#user_id',
       onMount: (container) => {
         // Create a root on the UI container and render a component
         const root = ReactDOM.createRoot(container);
-        root.render(<App />);
+        root.render(<Link />);
         return root;
       },
       onRemove: (root) => {
