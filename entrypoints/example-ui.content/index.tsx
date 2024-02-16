@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client';
 import Link from './Link';
 
 export default defineContentScript({
-  matches: ['<all_urls>'],
+  matches: ['https://jyso.zendesk.com/*'],
   cssInjectionMode: 'ui',
   // runAt: 'document_end',
 
@@ -15,36 +15,16 @@ export default defineContentScript({
       anchor: 'body',
       onMount: (container) => {
         const root = ReactDOM.createRoot(container);
-        setTimeout(() => {
-          const modalsBackdrop = document.querySelectorAll('[data-garden-id="modals.backdrop"]');
-          modalsBackdrop.forEach((modal) => {
-            modal.parentNode.removeChild(modal);
-          });
-          console.log('모든 [data-garden-id="modals.backdrop"] 요소가 제거되었습니다.');
+        root.render(<Link />);
+        console.log('React 컴포넌트 렌더링');
 
-          // class="modal-backdrop"을 가진 모든 요소 제거
-          const modalBackdrops = document.querySelectorAll('.modal-backdrop');
-          modalBackdrops.forEach((backdrop) => {
-            backdrop.parentNode.removeChild(backdrop);
-          });
-          console.log('모든 .modal-backdrop 요소가 제거되었습니다.');
-
-          // #wrapper에서 .blur 클래스 제거
-          const wrapper = document.getElementById('wrapper');
-          if (wrapper.classList.contains('blur')) {
-            wrapper.classList.remove('blur');
-            console.log('#wrapper에서 .blur 클래스가 제거되었습니다.');
-          } else {
-            console.log('#wrapper에 .blur 클래스가 존재하지 않습니다.');
-          }
-        }, 2000);
+        // UI 관련 작업을 초기화합니다.
+        initializeUiModifications();
 
         console.log('UI container mounted');
 
         initializeEmailFinder();
 
-        root.render(<Link />);
-        console.log('React 컴포넌트 렌더링');
         return root;
       },
       onRemove: (root) => {
@@ -52,11 +32,36 @@ export default defineContentScript({
         root.unmount();
       },
     });
+    //   // aria-label="컨텍스트 패널"
 
     // Call mount to add the UI to the DOM
     ui.mount();
   },
 });
+
+function initializeUiModifications() {
+  setInterval(() => {
+    removeElementsBySelectors(['[data-garden-id="modals.backdrop"]', '.modal-backdrop']);
+    toggleClassById('wrapper', 'blur', false);
+  }, 3000);
+}
+
+function removeElementsBySelectors(selectors: string[]) {
+  selectors.forEach((selector) => {
+    document.querySelectorAll(selector).forEach((el) => el.parentNode?.removeChild(el));
+  });
+  console.log('지정된 요소들이 제거되었습니다:', selectors.join(', '));
+}
+
+function toggleClassById(elementId: string, className: string, add: boolean) {
+  const element = document.getElementById(elementId);
+  if (element) {
+    add ? element.classList.add(className) : element.classList.remove(className);
+    console.log(`${elementId}에서 ${className} 클래스가 ${add ? '추가' : '제거'}되었습니다.`);
+  } else {
+    console.log(`${elementId} 요소를 찾을 수 없습니다.`);
+  }
+}
 
 function initializeEmailFinder() {
   const observer = new MutationObserver((mutations) => {
@@ -74,61 +79,35 @@ function initializeEmailFinder() {
   // 초기 페이지 로드 시 이메일 검색 및 처리
   searchAndAttachEmailLink(document.body);
 }
-
-function searchAndAttachEmailLink(rootNode) {
+function searchAndAttachEmailLink(rootNode: HTMLElement) {
   const emailRegex = /[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4}/g;
-  rootNode.querySelectorAll('*').forEach((node) => {
-    if (
-      node.nodeType === Node.TEXT_NODE &&
-      emailRegex.test(node.nodeValue) &&
-      !node.parentNode.hasAttribute('data-email-linked')
-    ) {
-      const email = node.nodeValue.match(emailRegex)[0];
-      attachEmailLink(node, email);
-    } else if (
-      node.nodeType === Node.ELEMENT_NODE &&
-      emailRegex.test(node.innerHTML) &&
-      !node.hasAttribute('data-email-linked')
-    ) {
-      const emailMatches = node.innerHTML.match(emailRegex);
-      if (emailMatches) {
-        emailMatches.forEach((email) => {
-          if (!node.hasAttribute('data-email-linked')) {
-            attachEmailLink(node, email);
-          }
-        });
+  // 모든 텍스트 노드를 순회합니다.
+  const nodes = rootNode.querySelectorAll('*');
+  for (const node of nodes) {
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const textContent = node.textContent || '';
+      const emails = textContent.match(emailRegex) || [];
+      if (emails.length > 0 && !node.hasAttribute('data-email-linked')) {
+        // 이메일 텍스트를 포함하는 가장 바깥쪽 노드에만 링크를 추가합니다.
+        attachEmailLink(node, emails[0]); // 첫 번째 이메일에 대해서만 처리합니다.
+        break; // 첫 번째 이메일을 처리한 후 루프를 종료합니다.
       }
     }
-  });
+  }
 }
 
-function attachEmailLink(node, email) {
-  // 이메일 링크가 이미 존재하는지 확인
-  if (
-    node.nextSibling &&
-    node.nextSibling.nodeType === Node.ELEMENT_NODE &&
-    node.nextSibling.getAttribute('href')?.includes(email)
-  ) {
-    console.log('이미 링크가 존재함:', email);
-    return; // 이미 링크가 존재하면 추가하지 않음
-  }
-
-  const emailLink = document.createElement('a');
-  emailLink.href = `https://test/users?email=${encodeURIComponent(email)}`;
-  emailLink.innerText = '관리 페이지로 이동';
-  emailLink.style.marginLeft = '10px';
-  emailLink.target = '_blank';
-  emailLink.setAttribute('data-email-linked', ''); // 처리됨을 표시
-
-  if (node.nextSibling) {
-    node.parentNode.insertBefore(emailLink, node.nextSibling);
-  } else {
-    node.parentNode.appendChild(emailLink);
-  }
-
-  if (node.nodeType === Node.TEXT_NODE) {
-    node.parentNode.setAttribute('data-email-linked', ''); // 부모 노드에 처리됨을 표시
-  } else {
-    node.setAttribute('data-email-linked', ''); // ELEMENT_NODE에 직접 처리됨을 표시
+function attachEmailLink(node: Node, email: string) {
+  // 이메일 주소를 하이퍼링크로 변환하는 정규식을 사용합니다.
+  const emailRegex = new RegExp(`(${email})`, 'g');
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    const element = node as HTMLElement;
+    const newHtml = element.innerHTML.replace(
+      emailRegex,
+      `<a href="https://local-foa-v2.rememberapp.co.kr:10002/users?email=${encodeURIComponent(
+        'sm9@rmbr.in'
+      )}" target="_blank" data-email-linked>sm9@rmbr.in</a>`
+    );
+    element.innerHTML = newHtml;
+    element.setAttribute('data-email-linked', ''); // 이메일 링크가 추가된 요소를 표시합니다.
   }
 }
